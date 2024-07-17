@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkbox Grid</title>
+    <style>
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(100, 1fr);
+            gap: 5px;
+        }
+        .checkbox {
+            width: 20px;
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Checkbox Grid</h1>
+    <div id="grid"></div>
+    <script>
+        const ROWS = 100;
+        const COLS = 100;
+        const WS_URL = 'ws://localhost:8080/ws';
+
+        let state = new Array(ROWS * COLS).fill(false);
+        const grid = document.getElementById('grid');
+
+        const socket = new WebSocket(WS_URL);
+
+        socket.onopen = function(event) {
+            console.log("WebSocket is connected.");
+            requestFullState();
+        };
+
+        socket.onmessage = function(event) {
+            const message = JSON.parse(event.data);
+            if (message.type === 'full_state') {
+                state = message.data;
+                renderGrid();
+            } else if (message.type === 'toggle') {
+                state[message.index] = message.value;
+                document.getElementById('checkbox-' + message.index).checked = message.value;
+            }
+        };
+
+        function requestFullState() {
+            socket.send(JSON.stringify({ type: 'request_full_state' }));
+        }
+
+        function toggleCheckbox(index) {
+            state[index] = !state[index];
+            socket.send(JSON.stringify({ type: 'toggle', index: index, value: state[index] }));
+        }
+
+        function createCheckbox(index) {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'checkbox';
+            checkbox.id = 'checkbox-' + index;
+            checkbox.checked = state[index];
+            checkbox.addEventListener('change', function() {
+                toggleCheckbox(index);
+            });
+            return checkbox;
+        }
+
+        function renderGrid() {
+            grid.innerHTML = '';
+            for (let i = 0; i < ROWS * COLS; i++) {
+                const checkbox = createCheckbox(i);
+                grid.appendChild(checkbox);
+            }
+        }
+
+        // Initial render
+        renderGrid();
+
+        setInterval(requestFullState, 30000);
+    </script>
+</body>
+</html>
