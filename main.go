@@ -44,6 +44,11 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.WriteJSON(fullStateMsg)
 
+	defer func() {
+		delete(clients, ws)
+		ws.Close()
+	}()
+
 	for {
 		var msg Message
 		err := ws.ReadJSON(&msg)
@@ -57,39 +62,44 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 
 			delete(clients, ws)
 			break
-		}
+		} // if()
 
 		if msg.Type == "toggle" {
 			err := redis.SaveStateToRedis(msg.Index, msg.Value)
 			if err != nil {
 				log.Println("Error saving state to Redis:", err)
 				continue
-			}
+			} // if()
 			broadcast(msg)
 		} else if msg.Type == "request_full_state" {
 			state, err := redis.GetStateFromRedis()
 			if err != nil {
 				log.Println("Error getting state from Redis:", err)
 				continue
-			}
+			} // if()
 			fullStateMsg := Message{
 				Type: "full_state",
 				Data: state,
 			}
 			ws.WriteJSON(fullStateMsg)
-		}
-	}
+		} // else if()
+	} // for()
 } // handleConnections()
 
 func broadcast(msg Message) {
+	ch := make(chan struct{}, 50 )
 	for client := range clients {
-		err := client.WriteJSON(msg)
-		if err != nil {
-			log.Printf("WebSocket error: %v", err)
-			client.Close()
-			delete(clients, client)
-		}
-	}
+		ch <- struct{}{}
+		go func( client *websocket.Conn) {
+			defer func() { <- ch }()
+			err := client.WriteJSON(msg)
+			if err != nil {
+				log.Printf("WebSocket error: %v", err)
+				client.Close()
+				delete(clients, client)
+			} // if()
+		}( client )
+	} // for()
 } // broadcast()
 
 func setupRoutes() {
@@ -100,17 +110,17 @@ func setupRoutes() {
 
 func main() {
 	log.Println("WebSocket server started at :8080")
+	
 	rdb := redis.Init()
-
-    // 測試連線是否成功
     pong, err := rdb.Ping(context.Background()).Result()
     if err != nil {
         panic(err)
-    }
-    fmt.Println(pong) // 輸出 "PONG"
+    } // if()
+    fmt.Println(pong) 
 
 	setupRoutes()
 
+	// 這邊是每 30 秒去推播目前 REDIS 裡面的資料去同步全部人看到的訊息
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -126,7 +136,7 @@ func main() {
 				Data: state,
 			}
 			broadcast(fullStateMsg)
-		}
+		} // for()
 	}()
 
 	log.Fatal(http.ListenAndServe(":8080", nil))

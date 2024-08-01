@@ -18,14 +18,18 @@
 </head>
 <body>
     <h1>Checkbox Grid</h1>
+    <div id="counter">0</div> 
     <div id="grid"></div>
     <script>
-        const ROWS = 100;
-        const COLS = 100;
+        const ROWS = 80;
+        const COLS = 1250;
+        const TOTAL_CHECKBOXES = ROWS * COLS;
         const WS_URL = 'ws://localhost:8080/ws';
 
-        let state = new Array(ROWS * COLS).fill(false);
+        let state = new Array(TOTAL_CHECKBOXES).fill(false);
+        let userSelectedCount = 0;
         const grid = document.getElementById('grid');
+        const counter = document.getElementById('counter');
 
         const socket = new WebSocket(WS_URL);
 
@@ -40,9 +44,24 @@
                 state = message.data;
                 renderGrid();
             } else if (message.type === 'toggle') {
-                state[message.index] = message.value;
-                document.getElementById('checkbox-' + message.index).checked = message.value;
+                const index = message.index;
+                const newValue = message.value;
+                state[index] = newValue;
+                document.getElementById('checkbox-' + index).checked = newValue;
             }
+        };
+
+        socket.onclose = function(event) {
+            if (event.wasClean) {
+                console.log(`WebSocket closed cleanly, code=${event.code}, reason=${event.reason}`);
+            } else {
+                console.error(`WebSocket connection closed unexpectedly, code=${event.code}`);
+                reconnectWebSocket();
+            } // else()
+        };
+
+        socket.onerror = function(error) {
+            console.error(`WebSocket error: ${error.message}`);
         };
 
         function requestFullState() {
@@ -50,8 +69,15 @@
         }
 
         function toggleCheckbox(index) {
-            state[index] = !state[index];
-            socket.send(JSON.stringify({ type: 'toggle', index: index, value: state[index] }));
+            const newValue = !state[index];
+            state[index] = newValue;
+            socket.send(JSON.stringify({ type: 'toggle', index: index, value: newValue }));
+            if (newValue) {
+                userSelectedCount++;
+            } else {
+                userSelectedCount--;
+            }
+            updateCounter();
         }
 
         function createCheckbox(index) {
@@ -68,15 +94,54 @@
 
         function renderGrid() {
             grid.innerHTML = '';
-            for (let i = 0; i < ROWS * COLS; i++) {
+            for (let i = 0; i < TOTAL_CHECKBOXES; i++) {
                 const checkbox = createCheckbox(i);
                 grid.appendChild(checkbox);
             }
         }
 
+        function updateCounter() {
+            counter.textContent = `${userSelectedCount}`;
+        }
+
+        function reconnectWebSocket() {
+            console.log("Attempting to reconnect WebSocket...");
+            setTimeout(function() {
+                socket = new WebSocket(WS_URL);
+                socket.onopen = function(event) {
+                    console.log("WebSocket is reconnected.");
+                    requestFullState();
+                };
+                socket.onmessage = function(event) {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'full_state') {
+                        state = message.data;
+                        renderGrid();
+                    } else if (message.type === 'toggle') {
+                        const index = message.index;
+                        const newValue = message.value;
+                        state[index] = newValue;
+                        document.getElementById('checkbox-' + index).checked = newValue;
+                    }
+                };
+                socket.onclose = function(event) {
+                    if (event.wasClean) {
+                        console.log(`WebSocket closed cleanly, code=${event.code}, reason=${event.reason}`);
+                    } else {
+                        console.error(`WebSocket connection closed unexpectedly, code=${event.code}`);
+                        reconnectWebSocket();
+                    }
+                };
+                socket.onerror = function(error) {
+                    console.error(`WebSocket error: ${error.message}`);
+                };
+            }, 5000); 
+        }
+
         // Initial render
         renderGrid();
 
+        // Set up the interval to request full state every 30 seconds
         setInterval(requestFullState, 30000);
     </script>
 </body>

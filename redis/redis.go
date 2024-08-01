@@ -1,16 +1,18 @@
 package redis
 
 import (
-    "github.com/go-redis/redis/v8"
-    "context"
+	"context"
+	"sync"
+
+	"github.com/go-redis/redis/v8"
 )
 
 var (
     ctx      = context.Background()
     rdb      *redis.Client
-    stateKey = "stateKey"
-    ROWS     = 100
-    COLS     = 100
+    stateKey = "checkbox_state"
+    ROWS     = 200
+    COLS     = 500
 )
 
 func Init() *redis.Client {
@@ -40,13 +42,25 @@ func SaveStateToRedis(index int, value bool) error {
 } // SaveStateToRedis()
 
 func GetStateFromRedis() ([]bool, error) {
+    ch := make(chan struct{}, 100 )
+    var wg sync.WaitGroup
     state := make([]bool, ROWS*COLS)
+
     for i := 0; i < ROWS*COLS; i++ {
-        bit, err := rdb.GetBit(ctx, stateKey, int64(i)).Result()
-        if err != nil {
-            return nil, err
-        }
-        state[i] = bit == 1
-    }
+        wg.Add(1)
+        ch <- struct{}{}
+        go func(i int) {
+            defer wg.Done()
+            defer func() { <-ch }()
+            bit, err := rdb.GetBit(ctx, stateKey, int64(i)).Result()
+            if err != nil {
+                return
+            }
+            state[i] = bit == 1
+        }(i)
+    } // for()
+
+    wg.Wait()
+
     return state, nil
 } // GetStateFromRedis()
