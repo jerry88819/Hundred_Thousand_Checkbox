@@ -13,11 +13,12 @@ var (
     stateKey = "checkbox_state"
     ROWS     = 200
     COLS     = 500
+    mu       sync.Mutex
 )
 
 func Init() *redis.Client {
     rdb = redis.NewClient(&redis.Options{
-        Addr:     "localhost:6379", // Redis 
+        Addr:     "redis:6379", // Redis 
         Password: "",               
         DB:       0,                
     })
@@ -32,6 +33,8 @@ func Init() *redis.Client {
 } // Init()
 
 func SaveStateToRedis(index int, value bool) error {
+    mu.Lock()
+    defer mu.Unlock()
     var bitValue int
     if value {
         bitValue = 1
@@ -42,6 +45,8 @@ func SaveStateToRedis(index int, value bool) error {
 } // SaveStateToRedis()
 
 func GetStateFromRedis() ([]bool, error) {
+    mu.Lock()
+    defer mu.Unlock()
     ch := make(chan struct{}, 100 )
     var wg sync.WaitGroup
     state := make([]bool, ROWS*COLS)

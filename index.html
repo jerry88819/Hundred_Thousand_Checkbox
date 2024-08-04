@@ -18,7 +18,8 @@
 </head>
 <body>
     <h1>Checkbox Grid</h1>
-    <div id="counter">0</div> 
+    <div id="userCount">Connected Users: 0</div> 
+    <div id="counter">Check Box Counter: 0</div> 
     <div id="grid"></div>
     <script>
         const ROWS = 80;
@@ -30,6 +31,7 @@
         let userSelectedCount = 0;
         const grid = document.getElementById('grid');
         const counter = document.getElementById('counter');
+        const userCountElement = document.getElementById('userCount');
 
         const socket = new WebSocket(WS_URL);
 
@@ -48,6 +50,8 @@
                 const newValue = message.value;
                 state[index] = newValue;
                 document.getElementById('checkbox-' + index).checked = newValue;
+            } else if (message.type === 'user_count') {
+                userCountElement.textContent = `Connected Users: ${message.total_users}`;
             }
         };
 
@@ -101,7 +105,7 @@
         }
 
         function updateCounter() {
-            counter.textContent = `${userSelectedCount}`;
+            counter.textContent = `Check Box Counter: ${userSelectedCount}`;
         }
 
         function reconnectWebSocket() {
